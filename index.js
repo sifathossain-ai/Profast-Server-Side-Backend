@@ -36,12 +36,13 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        // await client.connect();
+        await client.connect();
 
         const parcelCollection = client.db('ParcelDB').collection('parcels');
         const paymentCollection = client.db('ParcelDB').collection('payments');
         const userCollection = client.db('ParcelDB').collection('users');
         const ridersCollection = client.db('ParcelDB').collection('riders');
+        const trackingCollection = client.db('ParcelDB').collection('tracking');
 
         // Custom Middlewares
         const verifyFBToken = async (req, res, next) => {
@@ -72,6 +73,22 @@ async function run() {
             }
             next();
         }
+        const verifyRider = async (req, res, next) => {
+            const email = req.decoded.email;
+            const user = await userCollection.findOne({ email });
+            if (!user || user.role !== 'rider') {
+                res.status(403).send({ message: 'Forbidden Access' })
+            }
+            next();
+        }
+        const verifyUser = async (req, res, next) => {
+            const email = req.decoded.email;
+            const user = await userCollection.findOne({ email });
+            if (!user || user.role !== 'user') {
+                res.status(403).send({ message: 'Forbidden Access' })
+            }
+            next();
+        }
 
 
         // Users Collection Apis:
@@ -93,7 +110,7 @@ async function run() {
         })
 
         // ✅ Get all parcels created by a specific user (Track a Package)
-        app.get("/user/parcels", async (req, res) => {
+        app.get("/user/parcels", verifyFBToken, async (req, res) => {
             try {
                 const { email } = req.query;
 
@@ -185,7 +202,7 @@ async function run() {
         });
 
         // GET API: Get all pending delivery tasks for a rider
-        app.get('/rider/parcels', async (req, res) => {
+        app.get('/rider/parcels', verifyFBToken, verifyRider, async (req, res) => {
             try {
                 const { email } = req.query;
 
@@ -231,7 +248,7 @@ async function run() {
         });
 
         // ✅ Get delivered parcels for a specific rider by email
-        app.get("/rider/deliveredParcels", async (req, res) => {
+        app.get("/rider/deliveredParcels", verifyFBToken, verifyRider, async (req, res) => {
             try {
                 const { email } = req.query;
                 const query = {
@@ -391,7 +408,7 @@ async function run() {
 
 
         // Get parcel by user id
-        app.get('/parcels/:id', async (req, res) => {
+        app.get('/parcels/:id', verifyFBToken, async (req, res) => {
             try {
                 const id = req.params.id;
                 // console.log(id);
@@ -453,7 +470,7 @@ async function run() {
         });
 
         // Get Dashboard Data For Rider
-        app.get('/parcels/rider/status-count', async (req, res) => {
+        app.get('/parcels/rider/status-count', verifyFBToken, verifyRider, async (req, res) => {
             const { email } = req.query;
 
             const pipeline = [
@@ -484,7 +501,7 @@ async function run() {
 
 
         // Get Dashboard Data for User
-        app.get('/user/parcels/summary/:email', async (req, res) => {
+        app.get('/user/parcels/summary/:email', verifyFBToken, verifyUser, async (req, res) => {
             const email = req.params.email;
 
             const pipeline = [
@@ -533,7 +550,7 @@ async function run() {
         });
 
         // Get Dashboard Data For Admin.
-        app.get('/admin/dashboard/summary', async (req, res) => {
+        app.get('/admin/dashboard/summary', verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const totalActiveRiders = await ridersCollection.countDocuments({ status: 'approved' });
                 const totalNotAssignedParcels = await parcelCollection.countDocuments({
@@ -560,7 +577,7 @@ async function run() {
                 res.status(500).send({ message: 'Failed to load dashboard summary', error: error.message });
             }
         });
-        app.get("/admin/parcels/status", async (req, res) => {
+        app.get("/admin/parcels/status", verifyFBToken, verifyAdmin, async (req, res) => {
             try {
                 const parcels = await parcelCollection
                     .find(
@@ -699,3 +716,4 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log(`🚀 Server running on PORT: ${port}`);
 });
+
